@@ -1,3 +1,1 @@
 web: bash start.sh
-tunnel: cloudflared tunnel run --token eyJhIjoiNGZkM2JmMWFjMTczNGI3YWJjYzdhZTdmMDc1NjhjNmUiLCJ0IjoiNWYyYTIwYTYtZTUwYi00ZmE2LWFhZTUtYTJiOTJkYjcyYjNiIiwicyI6IlpETmpOekZqTUdNdE5XWmxOaTAwTmpjekxXSTFOamt0TXpZMU1UQmtOell4WmpZNCJ9
-
