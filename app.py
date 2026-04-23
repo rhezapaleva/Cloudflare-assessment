@@ -1,24 +1,39 @@
 from flask import Flask, request, jsonify, redirect
 from datetime import datetime
 import os
+import sqlite3
 
 app = Flask(__name__)
 
-# In-memory store — resets on restart, fine for demo
-messages = [
-    {
-        "name": "Alice",
-        "message": "What a lovely guestbook! Really clean design.",
-        "country": "SG",
-        "timestamp": "2026-04-20 10:12:00"
-    },
-    {
-        "name": "Bob",
-        "message": "Great site, keep it up!",
-        "country": "US",
-        "timestamp": "2026-04-21 14:33:00"
-    }
-]
+DB_PATH = os.environ.get("DB_PATH", "/tmp/guestbook.db")
+
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            message TEXT NOT NULL,
+            country TEXT DEFAULT '??',
+            timestamp TEXT NOT NULL
+        )
+    """)
+    # Seed with demo messages if empty
+    count = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+    if count == 0:
+        conn.execute("INSERT INTO messages (name, message, country, timestamp) VALUES (?, ?, ?, ?)",
+            ("Alice", "What a lovely guestbook! Really clean design.", "SG", "2026-04-20 10:12:00 UTC"))
+        conn.execute("INSERT INTO messages (name, message, country, timestamp) VALUES (?, ?, ?, ?)",
+            ("Bob", "Great site, keep it up!", "US", "2026-04-21 14:33:00 UTC"))
+        conn.commit()
+    conn.close()
+
+init_db()
 
 HOME_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -36,12 +51,10 @@ HOME_HTML = """<!DOCTYPE html>
       padding: 2rem 1rem;
     }}
     .container {{ max-width: 680px; margin: 0 auto; }}
-
     header {{ text-align: center; margin-bottom: 3rem; }}
     header .emoji {{ font-size: 3rem; margin-bottom: 0.5rem; }}
     header h1 {{ font-size: 2rem; font-weight: 700; color: #1a1a1a; }}
     header p {{ color: #666; margin-top: 0.3rem; font-size: 0.95rem; }}
-
     .card {{
       background: white;
       border: 1px solid #e8e5e0;
@@ -50,7 +63,6 @@ HOME_HTML = """<!DOCTYPE html>
       margin-bottom: 1.5rem;
       box-shadow: 0 1px 4px rgba(0,0,0,0.04);
     }}
-
     .card h2 {{
       font-size: 1rem;
       font-weight: 600;
@@ -59,7 +71,6 @@ HOME_HTML = """<!DOCTYPE html>
       padding-bottom: 0.75rem;
       border-bottom: 1px solid #f0ede8;
     }}
-
     .form-group {{ margin-bottom: 1rem; }}
     label {{
       display: block;
@@ -86,7 +97,6 @@ HOME_HTML = """<!DOCTYPE html>
       background: white;
     }}
     textarea {{ resize: vertical; min-height: 90px; }}
-
     button[type=submit] {{
       background: #f6821f;
       color: white;
@@ -100,7 +110,6 @@ HOME_HTML = """<!DOCTYPE html>
     }}
     button[type=submit]:hover {{ background: #e07010; }}
     button[type=submit]:active {{ transform: scale(0.98); }}
-
     .flash {{
       padding: 0.75rem 1rem;
       border-radius: 10px;
@@ -110,7 +119,6 @@ HOME_HTML = """<!DOCTYPE html>
     }}
     .flash.success {{ background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }}
     .flash.error   {{ background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }}
-
     .messages-list {{ display: flex; flex-direction: column; gap: 1rem; }}
     .message-item {{
       background: #fafaf8;
@@ -144,14 +152,12 @@ HOME_HTML = """<!DOCTYPE html>
       border-radius: 999px;
       flex-shrink: 0;
     }}
-
     .empty {{
       text-align: center;
       padding: 2rem;
       color: #aaa;
       font-size: 0.9rem;
     }}
-
     footer {{
       text-align: center;
       margin-top: 2rem;
@@ -238,10 +244,15 @@ SECURE_HTML = """<!DOCTYPE html>
 
 
 def render_messages():
-    if not messages:
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM messages ORDER BY id DESC").fetchall()
+    conn.close()
+
+    if not rows:
         return '<div class="empty">No messages yet — be the first to say hello!</div>'
+
     html = '<div class="messages-list">'
-    for m in reversed(messages):
+    for m in rows:
         initial = m["name"][0].upper()
         html += f"""
         <div class="message-item">
@@ -251,7 +262,7 @@ def render_messages():
               <div class="message-name">{m['name']}</div>
               <div class="message-time">{m['timestamp']}</div>
             </div>
-            <span class="message-country">{m.get('country', '??')}</span>
+            <span class="message-country">{m['country']}</span>
           </div>
           <div class="message-text">{m['message']}</div>
         </div>"""
@@ -268,9 +279,13 @@ def index():
     elif status == "err":
         flash = '<div class="flash error">✗ Name and message are required.</div>'
 
+    conn = get_db()
+    count = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+    conn.close()
+
     return HOME_HTML.format(
         flash=flash,
-        count=len(messages),
+        count=count,
         messages_html=render_messages()
     )
 
@@ -290,30 +305,32 @@ def post_message():
     country = request.headers.get("CF-IPCountry", "??")
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    messages.append({
-        "name": name,
-        "message": message,
-        "country": country,
-        "timestamp": timestamp
-    })
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO messages (name, message, country, timestamp) VALUES (?, ?, ?, ?)",
+        (name, message, country, timestamp)
+    )
+    conn.commit()
+    conn.close()
 
     return redirect("/?status=ok")
 
 
 @app.route("/secure")
 def secure():
-    # This route will be intercepted by the Cloudflare Worker in Part 3.
-    # The Worker returns the authenticated user's identity info.
-    # This Flask response is a fallback only.
     return SECURE_HTML
 
 
 @app.route("/health")
 def health():
+    conn = get_db()
+    count = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+    conn.close()
     return jsonify({
         "status": "ok",
         "timestamp": datetime.utcnow().isoformat(),
-        "message_count": len(messages)
+        "message_count": count,
+        "database": "sqlite"
     })
 
 
