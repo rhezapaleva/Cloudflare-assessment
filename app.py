@@ -9,12 +9,19 @@ CF_SECRET = os.environ.get("CF_SECRET", "rheza-secret-2026")
 
 @app.before_request
 def check_cf_secret():
-    # Allow health checks without the header
+    # Allow health checks
     if request.path == "/health":
         return
+    # Allow if correct secret header present (added by Cloudflare Transform Rule)
     secret = request.headers.get("X-Origin-Secret")
-    if secret != CF_SECRET:
-        return "Access denied — direct access is not allowed. Please use rhezapaleva.org", 403
+    if secret == CF_SECRET:
+        return
+    # Allow tunnel traffic (protected by Zero Trust Access instead)
+    host = request.headers.get("Host", "")
+    if "tunnel.rhezapaleva.org" in host:
+        return
+    # Block everything else (direct Railway access)
+    return "Access denied — direct access is not allowed. Please use rhezapaleva.org", 403
 
 DB_PATH = os.environ.get("DB_PATH", "/tmp/guestbook.db")
 
