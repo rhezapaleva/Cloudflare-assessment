@@ -1,8 +1,13 @@
 #!/bin/bash
 set -e
 
-echo "==> Downloading cloudflared..."
-wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /usr/local/bin/cloudflared
+echo "==> Downloading cloudflared using Python..."
+python3 -c "
+import urllib.request
+url = 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64'
+urllib.request.urlretrieve(url, '/usr/local/bin/cloudflared')
+print('Download complete')
+"
 chmod +x /usr/local/bin/cloudflared
 echo "==> cloudflared installed: $(cloudflared --version)"
 
