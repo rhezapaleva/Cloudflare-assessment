@@ -5,6 +5,17 @@ import sqlite3
 
 app = Flask(__name__)
 
+CF_SECRET = os.environ.get("CF_SECRET", "rheza-secret-2026")
+
+@app.before_request
+def check_cf_secret():
+    # Allow health checks without the header
+    if request.path == "/health":
+        return
+    secret = request.headers.get("X-Origin-Secret")
+    if secret != CF_SECRET:
+        return "Access denied — direct access is not allowed. Please use rhezapaleva.org", 403
+
 DB_PATH = os.environ.get("DB_PATH", "/tmp/guestbook.db")
 
 def get_db():
