@@ -351,6 +351,11 @@ def health():
         "database": "sqlite"
     })
 
+@app.route("/debug-headers")
+def debug_headers():
+    headers = dict(request.headers)
+    return jsonify(headers)
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
