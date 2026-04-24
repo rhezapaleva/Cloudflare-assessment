@@ -10,7 +10,7 @@ CF_SECRET = os.environ.get("CF_SECRET", "rheza-secret-2026")
 @app.before_request
 def check_cf_secret():
     # Allow health checks
-    if request.path == "/health":
+    if request.path in ["/health", "/debug-headers"]:
         return
     # Allow if correct secret header present (added by Cloudflare Transform Rule)
     secret = request.headers.get("X-Origin-Secret")
